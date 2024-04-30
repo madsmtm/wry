@@ -4,13 +4,14 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use cocoa::base::id;
-use objc::{
+use objc2::{
   declare::ClassDecl,
+  msg_send,
   runtime::{Object, Sel},
+  sel,
 };
 
-use super::{url_from_webview, InnerWebView, NSString};
+use super::{url_from_webview, util::id, InnerWebView, NSString};
 use crate::PageLoadEvent;
 
 extern "C" fn did_commit_navigation(this: &Object, _: Sel, webview: id, _navigation: id) {

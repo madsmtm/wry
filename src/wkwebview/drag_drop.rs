@@ -7,19 +7,23 @@ use std::{
   path::PathBuf,
 };
 
-use cocoa::{
-  base::{id, BOOL, YES},
-  foundation::{NSPoint, NSRect},
-};
-use objc::{
+use objc2::{
+  class,
   declare::ClassDecl,
-  runtime::{class_getInstanceMethod, method_getImplementation, Object, Sel},
+  msg_send, msg_send_id,
+  rc::Id,
+  runtime::{Bool, Object, Sel},
+  sel,
 };
+use objc2_app_kit::{NSFilenamesPboardType, NSPasteboard, NSPasteboardType};
+use objc2_foundation::{NSArray, NSPoint, NSRect, NSString};
 use once_cell::sync::Lazy;
 
 use crate::DragDropEvent;
 
-pub(crate) type NSDragOperation = cocoa::foundation::NSUInteger;
+use super::util::id;
+
+pub(crate) type NSDragOperation = objc2_foundation::NSUInteger;
 
 #[allow(non_upper_case_globals)]
 const NSDragOperationCopy: NSDragOperation = 1;
@@ -28,33 +32,41 @@ const DRAG_DROP_HANDLER_IVAR: &str = "DragDropHandler";
 
 static OBJC_DRAGGING_ENTERED: Lazy<extern "C" fn(*const Object, Sel, id) -> NSDragOperation> =
   Lazy::new(|| unsafe {
-    std::mem::transmute(method_getImplementation(class_getInstanceMethod(
-      class!(WKWebView),
-      sel!(draggingEntered:),
-    )))
+    std::mem::transmute(
+      class!(WKWebView)
+        .instance_method(sel!(draggingEntered:))
+        .unwrap()
+        .implementation(),
+    )
   });
 
 static OBJC_DRAGGING_EXITED: Lazy<extern "C" fn(*const Object, Sel, id)> = Lazy::new(|| unsafe {
-  std::mem::transmute(method_getImplementation(class_getInstanceMethod(
-    class!(WKWebView),
-    sel!(draggingExited:),
-  )))
+  std::mem::transmute(
+    class!(WKWebView)
+      .instance_method(sel!(draggingExited:))
+      .unwrap()
+      .implementation(),
+  )
 });
 
-static OBJC_PERFORM_DRAG_OPERATION: Lazy<extern "C" fn(*const Object, Sel, id) -> BOOL> =
+static OBJC_PERFORM_DRAG_OPERATION: Lazy<extern "C" fn(*const Object, Sel, id) -> Bool> =
   Lazy::new(|| unsafe {
-    std::mem::transmute(method_getImplementation(class_getInstanceMethod(
-      class!(WKWebView),
-      sel!(performDragOperation:),
-    )))
+    std::mem::transmute(
+      class!(WKWebView)
+        .instance_method(sel!(performDragOperation:))
+        .unwrap()
+        .implementation(),
+    )
   });
 
 static OBJC_DRAGGING_UPDATED: Lazy<extern "C" fn(*const Object, Sel, id) -> NSDragOperation> =
   Lazy::new(|| unsafe {
-    std::mem::transmute(method_getImplementation(class_getInstanceMethod(
-      class!(WKWebView),
-      sel!(draggingUpdated:),
-    )))
+    std::mem::transmute(
+      class!(WKWebView)
+        .instance_method(sel!(draggingUpdated:))
+        .unwrap()
+        .implementation(),
+    )
   });
 
 // Safety: objc runtime calls are unsafe
@@ -63,7 +75,7 @@ pub(crate) unsafe fn set_drag_drop_handler(
   handler: Box<dyn Fn(DragDropEvent) -> bool>,
 ) -> *mut Box<dyn Fn(DragDropEvent) -> bool> {
   let listener = Box::into_raw(Box::new(handler));
-  (*webview).set_ivar(DRAG_DROP_HANDLER_IVAR, listener as *mut _ as *mut c_void);
+  *(*webview).get_mut_ivar(DRAG_DROP_HANDLER_IVAR) = listener as *mut _ as *mut c_void;
   listener
 }
 
@@ -74,18 +86,15 @@ unsafe fn get_handler(this: &Object) -> &mut Box<dyn Fn(DragDropEvent) -> bool> 
 }
 
 unsafe fn collect_paths(drag_info: id) -> Vec<PathBuf> {
-  use cocoa::{
-    appkit::{NSFilenamesPboardType, NSPasteboard},
-    foundation::{NSFastEnumeration, NSString},
-  };
-
-  let pb: id = msg_send![drag_info, draggingPasteboard];
+  let pb: Id<NSPasteboard> = msg_send_id![drag_info, draggingPasteboard];
   let mut drag_drop_paths = Vec::new();
-  let types: id = msg_send![class!(NSArray), arrayWithObject: NSFilenamesPboardType];
-  if !NSPasteboard::availableTypeFromArray(pb, types).is_null() {
-    for path in NSPasteboard::propertyListForType(pb, NSFilenamesPboardType).iter() {
+  let types: Id<NSArray<NSPasteboardType>> =
+    msg_send_id![class!(NSArray), arrayWithObject: NSFilenamesPboardType];
+  if let Some(_) = pb.availableTypeFromArray(&types) {
+    for path in pb.propertyListForType(NSFilenamesPboardType) {
+      let path: Id<NSString> = Id::cast(path);
       drag_drop_paths.push(PathBuf::from(
-        CStr::from_ptr(NSString::UTF8String(path))
+        CStr::from_ptr(path.UTF8String())
           .to_string_lossy()
           .into_owned(),
       ));
@@ -131,7 +140,7 @@ extern "C" fn dragging_entered(this: &mut Object, sel: Sel, drag_info: id) -> NS
   }
 }
 
-extern "C" fn perform_drag_operation(this: &mut Object, sel: Sel, drag_info: id) -> BOOL {
+extern "C" fn perform_drag_operation(this: &mut Object, sel: Sel, drag_info: id) -> Bool {
   let listener = unsafe { get_handler(this) };
   let paths = unsafe { collect_paths(drag_info) };
 
@@ -143,7 +152,7 @@ extern "C" fn perform_drag_operation(this: &mut Object, sel: Sel, drag_info: id)
     // Reject the Wry drop (invoke the OS default behaviour)
     OBJC_PERFORM_DRAG_OPERATION(this, sel, drag_info)
   } else {
-    YES
+    Bool::YES
   }
 }
 
@@ -170,7 +179,7 @@ pub(crate) unsafe fn add_drag_drop_methods(decl: &mut ClassDecl) {
 
   decl.add_method(
     sel!(performDragOperation:),
-    perform_drag_operation as extern "C" fn(&mut Object, Sel, id) -> BOOL,
+    perform_drag_operation as extern "C" fn(_, Sel, id) -> _,
   );
 
   decl.add_method(

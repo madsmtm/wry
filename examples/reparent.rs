@@ -91,7 +91,7 @@ fn main() -> wry::Result<()> {
 
         #[cfg(target_os = "macos")]
         webview
-          .reparent(new_parent.ns_window() as cocoa::base::id)
+          .reparent(new_parent.ns_window() as *mut AnyObject)
           .unwrap();
         #[cfg(not(any(
           target_os = "windows",

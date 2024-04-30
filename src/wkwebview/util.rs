@@ -5,6 +5,8 @@
 use cocoa::{base::id, foundation::NSOperatingSystemVersion};
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use objc2::runtime::AnyObject;
+
 pub struct Counter(AtomicU32);
 
 impl Counter {
@@ -29,3 +31,5 @@ pub fn operating_system_version() -> (u64, u64, u64) {
     )
   }
 }
+
+pub type id = *mut AnyObject;

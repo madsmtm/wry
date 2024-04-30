@@ -1,22 +1,21 @@
 use std::{path::PathBuf, ptr::null_mut, rc::Rc};
 
-use cocoa::base::id;
-use objc::{
+use objc2::{
+  class,
   declare::ClassDecl,
+  msg_send,
   runtime::{Object, Sel},
+  sel,
 };
 use std::ffi::c_void;
 
-use super::NSString;
+use super::{util::id, NSString};
 
 pub(crate) unsafe fn set_download_delegate(webview: *mut Object, download_delegate: *mut Object) {
-  (*webview).set_ivar(
-    "DownloadDelegate",
-    download_delegate as *mut _ as *mut c_void,
-  );
+  *(*webview).get_mut_ivar("DownloadDelegate") = download_delegate as *mut _ as *mut c_void;
 }
 
-unsafe fn get_download_delegate(this: &mut Object) -> *mut objc::runtime::Object {
+unsafe fn get_download_delegate(this: &mut Object) -> *mut Object {
   let delegate: *mut c_void = *this.get_ivar("DownloadDelegate");
   delegate as *mut Object
 }
@@ -66,14 +65,14 @@ pub extern "C" fn download_policy(
     let url = NSString(url);
     let path = NSString(suggested_path);
     let mut path = PathBuf::from(path.to_str());
-    let handler = handler as *mut block::Block<(id,), c_void>;
+    let handler = handler as *mut block2::Block<dyn Fn(id) -> c_void>;
 
     let function = this.get_ivar::<*mut c_void>("started");
     if !function.is_null() {
       let function = &mut *(*function as *mut Box<dyn for<'s> FnMut(String, &mut PathBuf) -> bool>);
       match (function)(url.to_str().to_string(), &mut path) {
         true => {
-          let nsurl: id = msg_send![class!(NSURL), fileURLWithPath: NSString::new(&path.display().to_string()) isDirectory: false];
+          let nsurl: id = msg_send![class!(NSURL), fileURLWithPath: NSString::new(&path.display().to_string()), isDirectory: false];
           (*handler).call((nsurl,))
         }
         false => (*handler).call((null_mut(),)),

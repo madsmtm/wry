@@ -12,13 +12,12 @@ mod proxy;
 mod synthetic_mouse_events;
 mod util;
 
-#[cfg(target_os = "macos")]
-use cocoa::appkit::{NSView, NSViewHeightSizable, NSViewMinYMargin, NSViewWidthSizable};
-use cocoa::{
-  base::{id, nil, NO, YES},
-  foundation::{NSDictionary, NSFastEnumeration, NSInteger},
-};
 use dpi::{LogicalPosition, LogicalSize};
+#[cfg(target_os = "macos")]
+use objc2_app_kit::{
+  NSAutoresizingMaskOptions, NSView, NSViewHeightSizable, NSViewMinYMargin, NSViewWidthSizable,
+  NSWindow,
+};
 use once_cell::sync::Lazy;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
@@ -33,11 +32,16 @@ use std::{
 };
 
 use core_graphics::geometry::{CGPoint, CGRect, CGSize};
-use objc::{
+use objc2::{
+  class,
   declare::ClassDecl,
-  runtime::{Class, Object, Sel, BOOL},
+  encode::{Encode, Encoding, RefEncode},
+  msg_send,
+  runtime::{Class, Object, Sel, BOOL, NO, YES},
+  sel,
 };
-use objc_id::Id;
+use objc2::{rc::Id, runtime::Bool};
+use objc2_foundation::{NSDictionary, NSFastEnumeration, NSInteger};
 
 #[cfg(target_os = "macos")]
 use drag_drop::{add_drag_drop_methods, set_drag_drop_handler};
@@ -68,7 +72,7 @@ use http::{
   Request, Response as HttpResponse,
 };
 
-use self::util::Counter;
+use self::util::{id, Counter};
 
 const IPC_MESSAGE_HANDLER_NAME: &str = "ipc";
 #[cfg(target_os = "macos")]
@@ -393,29 +397,22 @@ impl InnerWebView {
           {
             add_drag_drop_methods(&mut decl);
             synthetic_mouse_events::setup(&mut decl);
-            decl.add_ivar::<bool>(ACCEPT_FIRST_MOUSE);
+            decl.add_ivar::<Bool>(ACCEPT_FIRST_MOUSE);
             decl.add_method(
               sel!(acceptsFirstMouse:),
-              accept_first_mouse as extern "C" fn(&Object, Sel, id) -> BOOL,
+              accept_first_mouse as extern "C" fn(_, _, _) -> _,
             );
             decl.add_method(
               sel!(performKeyEquivalent:),
-              key_equivalent as extern "C" fn(&mut Object, Sel, id) -> BOOL,
+              key_equivalent as extern "C" fn(_, _, _) -> _,
             );
 
-            extern "C" fn key_equivalent(_this: &mut Object, _sel: Sel, _event: id) -> BOOL {
-              NO
+            extern "C" fn key_equivalent(_this: &mut Object, _sel: Sel, _event: id) -> Bool {
+              Bool::NO
             }
 
-            extern "C" fn accept_first_mouse(this: &Object, _sel: Sel, _event: id) -> BOOL {
-              unsafe {
-                let accept: bool = *this.get_ivar(ACCEPT_FIRST_MOUSE);
-                if accept {
-                  YES
-                } else {
-                  NO
-                }
-              }
+            extern "C" fn accept_first_mouse(this: &Object, _sel: Sel, _event: id) -> Bool {
+              unsafe { *this.get_ivar(ACCEPT_FIRST_MOUSE) }
             }
           }
           decl.register()
@@ -446,7 +443,9 @@ impl InnerWebView {
       }
 
       #[cfg(target_os = "macos")]
-      (*webview).set_ivar(ACCEPT_FIRST_MOUSE, attributes.accept_first_mouse);
+      {
+        *(*webview).get_mut_ivar(ACCEPT_FIRST_MOUSE) = Bool::new(attributes.accept_first_mouse);
+      }
 
       let _: id = msg_send![_preference, setValue:_yes forKey:NSString::new("allowsPictureInPictureMediaPlayback")];
 
@@ -475,8 +474,6 @@ impl InnerWebView {
 
       #[cfg(target_os = "macos")]
       {
-        use cocoa::appkit::NSWindow;
-
         let window: id = msg_send![ns_view, window];
         let scale_factor = window.backingScaleFactor();
         let (x, y) = attributes
@@ -647,7 +644,7 @@ impl InnerWebView {
           let target_frame: id = msg_send![action, targetFrame];
           let is_main_frame: bool = msg_send![target_frame, isMainFrame];
 
-          let handler = handler as *mut block::Block<(NSInteger,), c_void>;
+          let handler = handler as *mut block::Block<dyn Fn(NSInteger) -> c_void>;
 
           if should_download == YES {
             let has_download_handler = this.get_ivar::<*mut c_void>("HasDownloadHandler");
@@ -685,7 +682,7 @@ impl InnerWebView {
         handler: id,
       ) {
         unsafe {
-          let handler = handler as *mut block::Block<(NSInteger,), c_void>;
+          let handler = handler as *mut block::Block<dyn Fn(NSInteger) -> c_void>;
           let can_show_mime_type: bool = msg_send![response, canShowMIMEType];
 
           if !can_show_mime_type {
@@ -834,7 +831,7 @@ impl InnerWebView {
         handler: id,
       ) {
         unsafe {
-          let handler = handler as *mut block::Block<(id,), c_void>;
+          let handler = handler as *mut block::Block<dyn Fn(id) -> c_void>;
           let cls = class!(NSOpenPanel);
           let open_panel: id = msg_send![cls, openPanel];
           let _: () = msg_send![open_panel, setCanChooseFiles: YES];
@@ -862,7 +859,7 @@ impl InnerWebView {
         decision_handler: id,
       ) {
         unsafe {
-          let decision_handler = decision_handler as *mut block::Block<(NSInteger,), c_void>;
+          let decision_handler = decision_handler as *mut block::Block<dyn Fn(NSInteger) -> c_void>;
           //https://developer.apple.com/documentation/webkit/wkpermissiondecision?language=objc
           (*decision_handler).call((1,));
         }
@@ -1172,8 +1169,8 @@ r#"Object.defineProperty(window, 'ipc', {
     unsafe {
       // taken from <https://github.com/WebKit/WebKit/blob/784f93cb80a386c29186c510bba910b67ce3adc1/Source/WebKit/UIProcess/API/Cocoa/WKWebView.mm#L1939>
       let tool: id = msg_send![self.webview, _inspector];
-      let is_visible: objc::runtime::BOOL = msg_send![tool, isVisible];
-      is_visible == objc::runtime::YES
+      let is_visible: objc2::runtime::BOOL = msg_send![tool, isVisible];
+      is_visible == objc2::runtime::YES
     }
     #[cfg(not(target_os = "macos"))]
     false
@@ -1354,6 +1351,10 @@ impl NSUUID {
 }
 
 struct NSString(id);
+
+unsafe impl Encode for NSString {
+  const ENCODING: Encoding = Encoding::Object;
+}
 
 impl NSString {
   fn new(s: &str) -> Self {

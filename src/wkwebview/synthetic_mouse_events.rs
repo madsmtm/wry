@@ -1,12 +1,11 @@
-use super::NSString;
-use cocoa::{
-  appkit::{NSEvent, NSEventModifierFlags, NSEventType, NSView},
-  base::{id, nil},
-};
-use objc::{
+use super::{util::id, NSString};
+use objc2::{
   declare::ClassDecl,
+  msg_send,
   runtime::{Object, Sel},
+  sel,
 };
+use objc2_app_kit::{NSEvent, NSEventModifierFlags, NSEventType, NSView};
 use std::{ffi::c_void, ptr::null};
 
 pub unsafe fn setup(decl: &mut ClassDecl) {

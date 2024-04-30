@@ -10,13 +10,13 @@ use crate::{proxy::ProxyEndpoint, Error};
 use super::NSString;
 
 #[allow(non_camel_case_types)]
-pub type nw_endpoint_t = *mut objc::runtime::Object;
+pub type nw_endpoint_t = *mut objc2::runtime::Object;
 #[allow(non_camel_case_types)]
-pub type nw_relay_hop_t = *mut objc::runtime::Object;
+pub type nw_relay_hop_t = *mut objc2::runtime::Object;
 #[allow(non_camel_case_types)]
-pub type nw_protocol_options_t = *mut objc::runtime::Object;
+pub type nw_protocol_options_t = *mut objc2::runtime::Object;
 #[allow(non_camel_case_types)]
-pub type nw_proxy_config_t = *mut objc::runtime::Object;
+pub type nw_proxy_config_t = *mut objc2::runtime::Object;
 
 #[link(name = "Network", kind = "framework")]
 extern "C" {

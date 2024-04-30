@@ -27,7 +27,7 @@ rustdoc-args = [ "--cfg", "docsrs" ]
 [features]
 default = [ "drag-drop", "objc-exception", "protocol", "os-webview" ]
 serde = [ "dpi/serde" ]
-objc-exception = [ "objc/exception" ]
+objc-exception = [ "objc2/exception" ]
 drag-drop = [ ]
 protocol = [ ]
 devtools = [ ]
@@ -91,11 +91,22 @@ dunce = "1"
 ]
 
 [target."cfg(any(target_os = \"ios\", target_os = \"macos\"))".dependencies]
-block = "0.1"
-cocoa = "0.25"
+block2 = "0.5"
+objc2 = "0.5.1"
+objc2-foundation = { version = "0.2.0", features = [
+  "NSObjCRuntime",
+  "NSEnumerator",
+] }
 core-graphics = "0.23"
-objc = "0.2"
-objc_id = "0.1"
+
+[target."cfg(target_os = \"macos\")".dependencies]
+objc2-app-kit = { version = "0.2.0", features = [
+  "NSEvent",
+  "NSResponder",
+  "NSView",
+  "NSWindow",
+  "NSPasteboard",
+] }
 
 [target."cfg(target_os = \"android\")".dependencies]
 crossbeam-channel = "0.5"

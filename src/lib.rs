@@ -198,10 +198,6 @@
 #![allow(clippy::type_complexity)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-#[macro_use]
-extern crate objc;
-
 mod error;
 mod proxy;
 mod web_context;
@@ -240,7 +236,7 @@ use self::webview2::*;
 #[cfg(target_os = "windows")]
 use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Controller;
 
-use std::{borrow::Cow, path::PathBuf, rc::Rc};
+use std::{borrow::Cow, ffi::c_void, path::PathBuf, rc::Rc};
 
 use http::{Request, Response};
 
@@ -1591,33 +1587,34 @@ impl WebViewExtUnix for WebView {
 #[cfg(target_os = "macos")]
 pub trait WebViewExtMacOS {
   /// Returns WKWebView handle
-  fn webview(&self) -> cocoa::base::id;
+  fn webview(&self) -> *mut c_void;
   /// Returns WKWebView manager [(userContentController)](https://developer.apple.com/documentation/webkit/wkscriptmessagehandler/1396222-usercontentcontroller) handle
-  fn manager(&self) -> cocoa::base::id;
+  fn manager(&self) -> *mut c_void;
   /// Returns NSWindow associated with the WKWebView webview
-  fn ns_window(&self) -> cocoa::base::id;
+  fn ns_window(&self) -> *mut c_void;
   /// Attaches this webview to the given NSWindow and removes it from the current one.
-  fn reparent(&self, window: cocoa::base::id) -> Result<()>;
+  fn reparent(&self, window: *mut c_void) -> Result<()>;
 }
 
 #[cfg(target_os = "macos")]
 impl WebViewExtMacOS for WebView {
-  fn webview(&self) -> cocoa::base::id {
+  fn webview(&self) -> *mut c_void {
     self.webview.webview
   }
 
-  fn manager(&self) -> cocoa::base::id {
+  fn manager(&self) -> *mut c_void {
     self.webview.manager
   }
 
-  fn ns_window(&self) -> cocoa::base::id {
+  fn ns_window(&self) -> *mut c_void {
     unsafe {
-      let ns_window: cocoa::base::id = msg_send![self.webview.webview, window];
-      ns_window
+      let ns_window: *mut objc2::runtime::AnyObject =
+        objc2::msg_send![self.webview.webview, window];
+      ns_window.cast()
     }
   }
 
-  fn reparent(&self, window: cocoa::base::id) -> Result<()> {
+  fn reparent(&self, window: *mut c_void) -> Result<()> {
     self.webview.reparent(window)
   }
 }
@@ -1626,18 +1623,18 @@ impl WebViewExtMacOS for WebView {
 #[cfg(target_os = "ios")]
 pub trait WebViewExtIOS {
   /// Returns WKWebView handle
-  fn webview(&self) -> cocoa::base::id;
+  fn webview(&self) -> *mut AnyObject;
   /// Returns WKWebView manager [(userContentController)](https://developer.apple.com/documentation/webkit/wkscriptmessagehandler/1396222-usercontentcontroller) handle
-  fn manager(&self) -> cocoa::base::id;
+  fn manager(&self) -> *mut AnyObject;
 }
 
 #[cfg(target_os = "ios")]
 impl WebViewExtIOS for WebView {
-  fn webview(&self) -> cocoa::base::id {
+  fn webview(&self) -> *mut AnyObject {
     self.webview.webview
   }
 
-  fn manager(&self) -> cocoa::base::id {
+  fn manager(&self) -> *mut AnyObject {
     self.webview.manager
   }
 }
